@@ -1,55 +1,80 @@
-import { useState } from 'react';
-import useLocalStorage from '../hooks/useLocalStorage';
+import { useState, useEffect } from 'react';
+import { getBooks, getTransactions, addTransaction, clearTransactions } from '../api';
 import './Transactions.css';
 
 function Transactions() {
-  const [books, setBooks] = useLocalStorage('books', []);
-  const [transactions, setTransactions] = useLocalStorage('transactions', []);
-  const [currentUser] = useLocalStorage('currentUser', null);
+  const [books, setBooks] = useState([]);
+  const [transactions, setTransactions] = useState([]);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   const [bookId, setBookId] = useState('');
   const [type, setType] = useState('add');
   const [qty, setQty] = useState(1);
   const [note, setNote] = useState('');
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
+  // Read currentUser from localStorage (login is still tracked locally)
+  useEffect(() => {
+    const stored = localStorage.getItem('currentUser');
+    if (stored) setCurrentUser(JSON.parse(stored));
+  }, []);
 
-    const book = books.find((b) => b.id === Number(bookId));
-    if (!book) return alert('Please select a book');
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [booksData, txData] = await Promise.all([getBooks(), getTransactions()]);
+      setBooks(booksData);
+      setTransactions(txData);
+    } catch (err) {
+      console.error('Error loading:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!bookId) return alert('Please select a book');
 
     const amount = Number(qty);
     if (amount <= 0) return alert('Quantity must be greater than 0');
 
-    if (type === 'borrow' && book.quantity < amount) {
-      return alert(`Not enough stock. Only ${book.quantity} available.`);
-    }
+    try {
+      const res = await addTransaction({
+        bookId: Number(bookId),
+        type,
+        amount,
+        note,
+        userId: currentUser?.id || null,
+      });
 
-    const newQuantity = type === 'borrow' ? book.quantity - amount : book.quantity + amount;
-    setBooks(books.map((b) => (b.id === book.id ? { ...b, quantity: newQuantity } : b)));
+      if (res.error) return alert(res.error);
 
-    const tx = {
-      id: Date.now(),
-      bookTitle: book.title,
-      type,
-      amount,
-      note: note.trim(),
-      by: currentUser ? currentUser.name : 'Guest',
-      date: new Date().toLocaleString(),
-    };
-    setTransactions([tx, ...transactions]);
-
-    setBookId('');
-    setType('add');
-    setQty(1);
-    setNote('');
-  };
-
-  const clearHistory = () => {
-    if (window.confirm('Clear all transaction history? This cannot be undone.')) {
-      setTransactions([]);
+      await loadData();
+      setBookId('');
+      setType('add');
+      setQty(1);
+      setNote('');
+    } catch (err) {
+      alert('Error: ' + err.message);
     }
   };
+
+  const handleClear = async () => {
+    if (!window.confirm('Clear all transaction history? This cannot be undone.')) return;
+    try {
+      await clearTransactions();
+      await loadData();
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  };
+
+  if (loading) return <p style={{ padding: '2rem' }}>Loading transactions...</p>;
 
   return (
     <>
@@ -61,7 +86,6 @@ function Transactions() {
       </div>
 
       <div className="transaction-layout">
-        {/* Record Transaction */}
         <div className="panel">
           <h3 className="panel-title">Record Transaction</h3>
 
@@ -88,12 +112,7 @@ function Transactions() {
 
             <div className="field">
               <label>Quantity</label>
-              <input
-                type="number"
-                min="1"
-                value={qty}
-                onChange={(e) => setQty(e.target.value)}
-              />
+              <input type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)} />
             </div>
 
             <div className="field full-field">
@@ -112,7 +131,6 @@ function Transactions() {
           </form>
         </div>
 
-        {/* Transaction History */}
         <div className="panel">
           <div className="panel-heading">
             <div>
@@ -120,9 +138,7 @@ function Transactions() {
               <p>Complete stock movement log</p>
             </div>
             {transactions.length > 0 && (
-              <button className="danger-outline" onClick={clearHistory}>
-                Clear History
-              </button>
+              <button className="danger-outline" onClick={handleClear}>Clear History</button>
             )}
           </div>
 
@@ -144,8 +160,8 @@ function Transactions() {
                 ) : (
                   transactions.map((t) => (
                     <tr key={t.id}>
-                      <td className="small-td">{t.date}</td>
-                      <td>{t.bookTitle}</td>
+                      <td className="small-td">{new Date(t.created_at).toLocaleString()}</td>
+                      <td>{t.book_title}</td>
                       <td>
                         <span className={`tx-badge ${t.type}`}>
                           {t.type === 'borrow' ? 'Borrow' : 'Add'}
@@ -153,7 +169,7 @@ function Transactions() {
                       </td>
                       <td>{t.amount}</td>
                       <td>{t.note || '—'}</td>
-                      <td>{t.by}</td>
+                      <td>{t.user_name || 'Guest'}</td>
                     </tr>
                   ))
                 )}

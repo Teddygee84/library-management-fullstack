@@ -1,20 +1,37 @@
-import { useState } from 'react';
-import useLocalStorage from '../hooks/useLocalStorage';
+import { useState, useEffect } from 'react';
+import { getBooks, addBook, updateBook, deleteBook } from '../api';
 import './Books.css';
 
 function Books() {
-  const [books, setBooks] = useLocalStorage('books', []);
+  const [books, setBooks] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [genreFilter, setGenreFilter] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
 
-  // Form state
   const emptyForm = { title: '', author: '', genre: '', isbn: '', quantity: '' };
   const [form, setForm] = useState(emptyForm);
   const [errors, setErrors] = useState({});
 
-  const genres = [...new Set(books.map((b) => b.genre).filter(Boolean))];
+  // Load books on mount
+  const loadBooks = async () => {
+    setLoading(true);
+    try {
+      const data = await getBooks();
+      setBooks(data);
+    } catch (err) {
+      console.error('Error loading books:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadBooks();
+  }, []);
+
+  const genres = [...new Set(books.map(b => b.genre).filter(Boolean))];
 
   const filteredBooks = books.filter((b) => {
     const q = search.toLowerCase();
@@ -35,7 +52,13 @@ function Books() {
   };
 
   const openEdit = (book) => {
-    setForm({ ...book });
+    setForm({
+      title: book.title,
+      author: book.author,
+      genre: book.genre || '',
+      isbn: book.isbn,
+      quantity: book.quantity,
+    });
     setEditing(book.id);
     setErrors({});
     setModalOpen(true);
@@ -63,26 +86,35 @@ function Books() {
     return errs;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const errs = validate();
     if (Object.keys(errs).length) return setErrors(errs);
 
-    const payload = { ...form, quantity: Number(form.quantity) };
-
-    if (editing) {
-      setBooks(books.map((b) => (b.id === editing ? { ...payload, id: editing } : b)));
-    } else {
-      setBooks([...books, { ...payload, id: Date.now() }]);
-    }
-    closeModal();
-  };
-
-  const deleteBook = (id) => {
-    if (window.confirm('Delete this book?')) {
-      setBooks(books.filter((b) => b.id !== id));
+    try {
+      if (editing) {
+        await updateBook(editing, form);
+      } else {
+        await addBook(form);
+      }
+      await loadBooks();
+      closeModal();
+    } catch (err) {
+      alert('Error saving book: ' + err.message);
     }
   };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Delete this book?')) return;
+    try {
+      await deleteBook(id);
+      await loadBooks();
+    } catch (err) {
+      alert('Error deleting: ' + err.message);
+    }
+  };
+
+  if (loading) return <p style={{ padding: '2rem' }}>Loading books...</p>;
 
   return (
     <>
@@ -141,7 +173,7 @@ function Books() {
                     </td>
                     <td>
                       <button className="icon-btn edit" onClick={() => openEdit(b)}>Edit</button>
-                      <button className="icon-btn delete" onClick={() => deleteBook(b.id)}>Delete</button>
+                      <button className="icon-btn delete" onClick={() => handleDelete(b.id)}>Delete</button>
                     </td>
                   </tr>
                 ))
@@ -185,13 +217,7 @@ function Books() {
               </div>
               <div className="field">
                 <label>Initial Quantity</label>
-                <input
-                  name="quantity"
-                  type="number"
-                  min="0"
-                  value={form.quantity}
-                  onChange={handleChange}
-                />
+                <input name="quantity" type="number" min="0" value={form.quantity} onChange={handleChange} />
                 {errors.quantity && <span className="error">{errors.quantity}</span>}
               </div>
 

@@ -1,17 +1,41 @@
-import useLocalStorage from '../hooks/useLocalStorage';
+import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { getBooks, getUsers, getTransactions } from '../api';
 import './Dashboard.css';
 
 function Dashboard() {
-  const [books] = useLocalStorage('books', []);
-  const [users] = useLocalStorage('users', []);
-  const [transactions] = useLocalStorage('transactions', []);
+  const [books, setBooks] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [transactions, setTransactions] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadAll = async () => {
+      try {
+        const [b, u, t] = await Promise.all([
+          getBooks(),
+          getUsers(),
+          getTransactions(),
+        ]);
+        setBooks(b);
+        setUsers(u);
+        setTransactions(t);
+      } catch (err) {
+        console.error('Error loading dashboard:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadAll();
+  }, []);
 
   const lowStock = books.filter((b) => b.quantity < 2);
   const totalCopies = books.reduce((sum, b) => sum + b.quantity, 0);
 
+  if (loading) return <p style={{ padding: '2rem' }}>Loading dashboard...</p>;
+
   return (
     <div className="dashboard">
-      {/* Stat cards */}
       <div className="stats-grid">
         <div className="stat-card">
           <span className="stat-icon">T</span>
@@ -44,14 +68,13 @@ function Dashboard() {
       </div>
 
       <div className="section-grid">
-        {/* Availability panel */}
         <div className="panel">
           <div className="panel-heading">
             <div>
               <h3>Current Availability</h3>
               <p>Books currently held by the library</p>
             </div>
-            <a className="secondary-btn" href="/books">Manage Books</a>
+            <Link className="secondary-btn" to="/books">Manage Books</Link>
           </div>
 
           <div className="table-wrap">
@@ -92,7 +115,6 @@ function Dashboard() {
           </div>
         </div>
 
-        {/* Recent activity panel */}
         <div className="panel">
           <div className="panel-heading">
             <div>
@@ -109,9 +131,10 @@ function Dashboard() {
                 <div key={t.id} className="activity-item">
                   <span className={`dot ${t.type}`}></span>
                   <div>
-                    <strong>{t.bookTitle}</strong>
+                    <strong>{t.book_title}</strong>
                     <small>
-                      {t.type === 'borrow' ? 'Borrowed' : 'Added'} {t.amount} • {t.date}
+                      {t.type === 'borrow' ? 'Borrowed' : 'Added'} {t.amount} •{' '}
+                      {new Date(t.created_at).toLocaleString()}
                     </small>
                   </div>
                 </div>

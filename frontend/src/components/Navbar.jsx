@@ -1,14 +1,17 @@
-import { NavLink } from 'react-router-dom';
-import useLocalStorage from '../hooks/useLocalStorage';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import './Navbar.css';
 
 function Navbar() {
-  const [currentUser, setCurrentUser] = useLocalStorage('currentUser', null);
+  const { currentUser, setCurrentUser } = useAuth();
+  const navigate = useNavigate();
 
-  const linkClass = ({ isActive }) =>
-    isActive ? 'nav-item active' : 'nav-item';
+  const linkClass = ({ isActive }) => (isActive ? 'nav-item active' : 'nav-item');
 
-  const logout = () => setCurrentUser(null);
+  const logout = () => {
+    setCurrentUser(null);
+    navigate('/login');
+  };
 
   return (
     <aside className="sidebar">
@@ -28,7 +31,7 @@ function Navbar() {
       </nav>
 
       <div className="sidebar-bottom">
-        {currentUser ? (
+        {currentUser && (
           <>
             <div className="logged-user">
               <strong>{currentUser.name}</strong>
@@ -36,10 +39,6 @@ function Navbar() {
             </div>
             <button className="logout-btn" onClick={logout}>Logout</button>
           </>
-        ) : (
-          <div className="logged-user">
-            <small>Not logged in</small>
-          </div>
         )}
       </div>
     </aside>
